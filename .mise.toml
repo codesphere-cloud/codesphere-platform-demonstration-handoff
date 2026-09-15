@@ -1,12 +1,25 @@
 # Matches the learning platform's toolchain so the demo runs on the same
 # versions the cited ci.prod.yml runs on.
+#
+# jq/gh/direnv are pinned here too so the only things a developer's machine
+# has to provide are mise, direnv, and Docker — everything else (including
+# the CLIs infrastructure/preview/scaffold.sh needs) comes from mise, not
+# whatever happens to be on PATH via brew/apt/etc.
 [tools]
 node = "22.22.2"
 pnpm = "9.15.9"
+jq = "latest"
+gh = "latest"
+direnv = "latest"
+
+[tasks.doctor]
+description = "Verify the dev toolchain is present and correctly resolved"
+run = "bash infrastructure/dev/doctor.sh"
 
 [tasks.setup]
 description = "Bootstrap from clone to running app"
 run = """
+mise run doctor
 pnpm install
 pnpm dev:up
 pnpm db:migrate

@@ -9,6 +9,9 @@
 node_modules/
 .pnpm-store/
 
+# direnv cache (.envrc itself is committed and safe)
+.direnv/
+
 # Editor / IDE
 .vscode/
 
@@ -23,3 +26,7 @@ coverage/
 # Local env — never commit real values; see demo-app/.env.example
 .env
 .env.local
+
+# Preview-deployment scaffolding — holds a live Codesphere API token;
+# see infrastructure/preview/preview.env.example
+infrastructure/preview/preview.env

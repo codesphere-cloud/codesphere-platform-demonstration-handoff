@@ -9,8 +9,11 @@ development and QA setup.
 - `ci.dev.yml` and `ci.qa.yml`: Codesphere landscape definitions. The dev
   profile runs Vite with hot reload; the QA profile builds and serves the
   compiled app.
-- `infrastructure/`: Local Postgres setup for development and the Codesphere
-  startup script used by deployed landscapes.
+- `infrastructure/`: Local Postgres setup for development, the Codesphere
+  startup script used by deployed landscapes, and the preview-deployment
+  scaffolding script (`infrastructure/preview/`).
+- `.github/workflows/preview-deployment.yml`: Creates a Codesphere preview
+  workspace per pull request and tears it down on close.
 
 ## Local Development
 
@@ -22,12 +25,30 @@ The Codesphere landscapes use `ci.dev.yml`, `ci.qa.yml`, and
 
 ### Prerequisites
 
-- Node `22.22.x`, pinned in `.mise.toml` and required by `package.json`.
-- pnpm `9.15.9`, available through `corepack enable` or mise.
-- Docker, used only for the local Postgres database.
+Only three things need to exist on your machine before mise takes over:
 
-With [mise](https://mise.jdx.dev/) installed, run `mise trust` and
-`mise install` to install the pinned Node and pnpm versions.
+- [mise](https://mise.jdx.dev/) — manages Node `22.22.2`, pnpm `9.15.9`, `jq`,
+  and `gh`, all pinned in `.mise.toml`. Nothing else needs to be
+  brew/apt-installed for local dev or for `infrastructure/preview/scaffold.sh`.
+- [direnv](https://direnv.net/) — auto-activates the mise toolchain (and
+  loads `demo-app/.env.local` if present) whenever you `cd` into the repo,
+  via the committed `.envrc`.
+- Docker (with the Compose v2 plugin) — used only for the local Postgres
+  database. This is the one dependency mise/direnv can't provide; everything
+  else in this repo assumes it's already running.
+
+Install mise and direnv once, then from the repo root:
+
+```bash
+direnv allow   # trust .envrc — activates the pinned toolchain from here on
+mise install   # fetch node, pnpm, jq, gh at the pinned versions
+mise run doctor
+```
+
+`mise run doctor` (`infrastructure/dev/doctor.sh`) checks every dependency
+above — pinned tool versions, direnv activation, and the Docker daemon — and
+prints a specific, actionable message for anything missing before you go any
+further.
 
 ### First-Time Setup
 
@@ -40,8 +61,8 @@ pnpm db:seed:dev     # optional sample messages
 pnpm dev             # start the app at http://localhost:3000
 ```
 
-With mise, `mise run setup` runs install, starts Postgres, and applies
-migrations. Then run `mise run dev`.
+With mise, `mise run setup` runs `doctor` first, then install, starts
+Postgres, and applies migrations. Then run `mise run dev`.
 
 `demo-app/.env.local` is gitignored. It provides `DATABASE_URL` and
 `APP_BASE_URL` for local app and Drizzle CLI commands.
@@ -98,6 +119,9 @@ http://localhost:3000/api/health/live.
 
 ### Troubleshooting
 
+**Not sure what's missing?** Run `mise run doctor` — it checks mise, direnv,
+pinned tool versions, and the Docker daemon in one pass.
+
 **Port 5433 is already in use.** Another local Postgres container may be using
 the port. Stop that container or override the host port:
 
@@ -112,3 +136,51 @@ Docker Desktop or the Docker daemon.
 
 **Migrations fail or connection is refused.** Start Postgres with
 `pnpm dev:up` and check that `.env.local` points at the right port.
+
+## Preview Deployments
+
+Every pull request gets its own Codesphere workspace, deployed from
+`ci.dev.yml` (Vite dev server, hot reload, seeded sample data). The workspace
+is created on PR open/sync and deleted when the PR is closed or merged. See
+`.github/workflows/preview-deployment.yml`.
+
+### One-time setup
+
+The workflow needs a GitHub secret, two GitHub variables, and a Codesphere
+team shared vault. `infrastructure/preview/scaffold.sh` provisions all of it
+from one local, gitignored env file — you do not need to click through the
+GitHub or Codesphere UIs by hand.
+
+1. Create a Codesphere **service account** (a dedicated machine user, e.g.
+   `devops+ci@yourdomain.com`), invite it to your target team, and connect it
+   to this GitHub repository with Git permissions.
+2. Generate an API token for that service account: Codesphere > Account
+   Settings > API Keys.
+3. Copy the env template and fill it in:
+
+   ```bash
+   cp infrastructure/preview/preview.env.example infrastructure/preview/preview.env
+   # edit infrastructure/preview/preview.env: set CS_TOKEN and CS_TEAM_NAME at minimum
+   ```
+
+4. Run the scaffolding script (requires `gh` authenticated — `gh auth login`
+   — plus `curl` and `openssl`, both system-provided; `gh` and `jq` come from
+   mise, see Prerequisites above, and `mise run doctor` checks all of it):
+
+   ```bash
+   bash infrastructure/preview/scaffold.sh
+   ```
+
+   This sets the GitHub secret `CS_TOKEN` and variables `CS_TEAM_NAME`,
+   `CS_SHARED_VAULT`, `CODESPHERE_INSTANCE_URL`; creates the Codesphere team
+   shared vault named by `CS_SHARED_VAULT` if it does not exist; and stores
+   the `POSTGRES_PASSWORD` / `POSTGRES_SUPERUSER_PASSWORD` secrets that
+   `ci.dev.yml` references (generating strong random values if you left them
+   blank in `preview.env`). It is safe to re-run — existing values are left
+   alone unless you set `FORCE=1`.
+5. Open a pull request. The workflow validates all of the above (failing
+   with a clear error if anything is missing or invalid) before deploying,
+   then posts the preview link on the PR.
+
+`infrastructure/preview/preview.env` holds a live API token — never commit
+it (it is already gitignored).
