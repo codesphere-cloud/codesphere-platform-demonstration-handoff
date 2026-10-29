@@ -64,8 +64,10 @@ run:
       # Stable QA origin from workspace env, not the ephemeral dev domain.
       APP_BASE_URL: ${{ workspace.env['APP_BASE_URL'] }}
       # Constructed from the service key under run: (the trailing -postgres).
-      # Rename the postgres service above and this changes with it.
-      POSTGRES_HOST: ms-postgres-v1-${{ team.id }}-landscape-${{ workspace.id }}-postgres.ms-postgres.svc.cluster.local
+      # Rename the postgres service above and this changes with it. Since
+      # Codesphere 1.113 the database lives in the team's rg-<team id>
+      # namespace, no longer in ms-postgres.
+      POSTGRES_HOST: ms-postgres-v1-${{ team.id }}-landscape-${{ workspace.id }}-postgres.rg-${{ team.id }}.svc.cluster.local
       POSTGRES_PORT: "5432"
       POSTGRES_USER: demo_app
       POSTGRES_PASSWORD: ${{ vault.POSTGRES_PASSWORD }}
@@ -101,4 +103,4 @@ run:
           path: /db
           stripPath: true
     env:
-      ADMINER_DEFAULT_SERVER: ms-postgres-v1-${{ team.id }}-landscape-${{ workspace.id }}-postgres.ms-postgres.svc.cluster.local
+      ADMINER_DEFAULT_SERVER: ms-postgres-v1-${{ team.id }}-landscape-${{ workspace.id }}-postgres.rg-${{ team.id }}.svc.cluster.local
